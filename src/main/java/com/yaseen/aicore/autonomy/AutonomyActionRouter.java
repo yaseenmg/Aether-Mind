@@ -1,0 +1,76 @@
+package com.yaseen.aicore.autonomy;
+
+import com.yaseen.aicore.agent.InternalToolExecutor;
+import com.yaseen.aicore.entity.CompanionEntity;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.Items;
+
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Deterministic low-level router for autonomy. It is deliberately independent of
+ * the LLM: a weak/offline model must not make autonomy completely inert.
+ * One safe action is selected only after the kernel has released combat/task ownership.
+ */
+public final class AutonomyActionRouter {
+    private static final Map<UUID, Long> NEXT_ALLOWED = new ConcurrentHashMap<>();
+    private static final long COOLDOWN = 100L;
+
+    public static boolean tick(CompanionEntity c, ServerPlayer owner) {
+        if (c == null || owner == null || c.level().isClientSide() || !c.getAutonomy().routine()) return false;
+        long now = owner.serverLevel().getGameTime();
+        if (now < NEXT_ALLOWED.getOrDefault(c.getUUID(), Long.MIN_VALUE)) return false;
+        NEXT_ALLOWED.put(c.getUUID(), now + COOLDOWN);
+
+        // Survival is handled above this router, but food is a useful autonomous action
+        // even when no hostile target exists.
+        if (c.getFoodLevel() <= 8 && c.startEatingFromInventory()) {
+            c.getAutonomy().routineDone("eat_food", now);
+            return true;
+        }
+
+        String tool;
+        String args;
+        switch (c.getAutonomy().mode()) {
+            case MINER -> {
+                tool = "gather_resources";
+                args = "{\"resource\":\"stone\",\"count\":8}";
+            }
+            case FARMER -> {
+                tool = "farm_area";
+                args = "{\"radius\":6,\"replant\":true}";
+            }
+            case ENGINEER -> {
+                // Engineer mode first acquires starter material; construction tools can then
+                // use the real inventory instead of repeatedly failing for missing blocks.
+                tool = c.getCompanionInventory().countItem(Items.OAK_PLANKS) < 16
+                        ? "gather_resources" : "inspect_companion_inventory";
+                args = tool.equals("gather_resources")
+                        ? "{\"resource\":\"wood\",\"count\":8}" : "{}";
+            }
+            case FOLLOW -> {
+                tool = "follow_owner";
+                args = "{\"enabled\":true}";
+            }
+            default -> {
+                return false;
+            }
+        }
+
+        String actionId = "autonomy-" + UUID.randomUUID();
+        var result = InternalToolExecutor.invoke(c, owner, tool, args, actionId).result();
+        c.getAutonomy().routineDone("tool=" + tool + " result=" + result, now);
+        if (result != null && result.startsWith("STARTED")) {
+            c.say("بدأت تلقائيًا: " + tool + ".");
+            return true;
+        }
+        // A failed deterministic probe is still useful: the next LLM cycle sees the exact
+        // result in AgentMemory and can choose a different tool, but we do not spam every tick.
+        return result != null && (result.startsWith("SUCCESS") || result.startsWith("RESULT"));
+    }
+
+    public static void clear(UUID id) { NEXT_ALLOWED.remove(id); }
+    private AutonomyActionRouter() {}
+}

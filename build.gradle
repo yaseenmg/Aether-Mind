@@ -1,0 +1,32 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+}
+group='com.yaseen'
+version='0.1.4-61.1.4-groq-only'
+base { archivesName='aethermind' }
+java.toolchain.languageVersion=JavaLanguageVersion.of(17)
+
+minecraft {
+    mappings channel:'official', version:'1.20.1'
+    copyIdeResources=true
+    runs {
+        configureEach {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers','REGISTRIES'
+            property 'forge.logging.console.level','info'
+            mods { aicore { source sourceSets.main } }
+        }
+        client {}
+        server {}
+    }
+}
+repositories { mavenCentral() }
+dependencies {
+    minecraft 'net.minecraftforge:forge:1.20.1-47.4.10'
+}
+tasks.withType(JavaCompile).configureEach { options.encoding='UTF-8' }
+// ForgeGradle 6: without this the jar keeps official (non-SRG) names and crashes outside the dev environment.
+jar.finalizedBy('reobfJar')

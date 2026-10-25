@@ -1,0 +1,22 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+[[mods]]
+modId="aicore"
+version="0.1.4-61.1.4-groq-only"
+displayName="AetherMind"
+authors="Yaseen"
+description='''AetherMind is an autonomous Minecraft companion for Forge 1.20.1 using the Groq OpenAI-compatible API, deterministic tool routing, independent WorkGraph planning, persistent checkpoints, verified tool execution, survival reflex interruption, recursive live-recipe crafting, persistent memory and deterministic quest progression.'''
+
+[[dependencies.aicore]]
+modId="forge"
+mandatory=true
+versionRange="[47.4.10,)"
+ordering="NONE"
+side="BOTH"
+[[dependencies.aicore]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.1,1.21)"
+ordering="NONE"
+side="BOTH"

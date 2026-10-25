@@ -1,0 +1,3 @@
+package com.yaseen.aicore.tool.impl;
+import com.yaseen.aicore.advanced.BaseSiteEvaluator;import com.yaseen.aicore.tool.AITool;import com.yaseen.aicore.entity.CompanionEntity;import net.minecraft.server.level.ServerPlayer;
+public final class BaseSiteTool implements AITool{public String name(){return "evaluate_base_site";}public String description(){return "Evaluate real loaded terrain around the companion and return a factual candidate site; it does not build anything.";}public String schema(){return "{\"radius\":number(optional)}";}public String execute(CompanionEntity c,ServerPlayer p,String a){Integer r=MoveToTool.num(a,"radius");return BaseSiteEvaluator.evaluate(c,r==null?32:r);}}

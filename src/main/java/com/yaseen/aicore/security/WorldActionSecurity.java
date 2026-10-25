@@ -1,0 +1,60 @@
+package com.yaseen.aicore.security;
+
+import com.yaseen.aicore.entity.CompanionEntity;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.Container;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraftforge.common.util.BlockSnapshot;
+import net.minecraftforge.event.ForgeEventFactory;
+
+/** Central server-side security checks for AI world actions. */
+public final class WorldActionSecurity {
+    private static final double RANGE_SQR = 64.0D;
+    private WorldActionSecurity() {}
+
+    public static boolean canInteractWithBlock(CompanionEntity c, ServerPlayer owner, BlockPos pos) {
+        if (owner == null || !c.level().isLoaded(pos)) return false;
+        double x = pos.getX() + .5D, y = pos.getY() + .5D, z = pos.getZ() + .5D;
+        // The "beat the game" quest sends the companion far from its owner on purpose, so while it is
+        // active only the companion's own reach (plus the usual spawn/claim protection) applies.
+        if (com.yaseen.aicore.quest.DragonQuestDirector.isActive(c)) {
+            return c.distanceToSqr(x, y, z) <= RANGE_SQR && c.level().mayInteract(owner, pos);
+        }
+        if (c.level() != owner.level()) return false;
+        return c.distanceToSqr(x, y, z) <= RANGE_SQR
+                && owner.distanceToSqr(x, y, z) <= RANGE_SQR
+                && c.level().mayInteract(owner, pos);
+    }
+
+    /** Container/furnace access: spawn protection AND the right-click event, so claim mods can veto it. */
+    public static boolean canAccessContainer(CompanionEntity c, ServerPlayer owner, BlockPos pos) {
+        if (!canInteractWithBlock(c, owner, pos)) return false;
+        try {
+            var hit = new net.minecraft.world.phys.BlockHitResult(net.minecraft.world.phys.Vec3.atCenterOf(pos), Direction.UP, pos, false);
+            var ev = new net.minecraftforge.event.entity.player.PlayerInteractEvent.RightClickBlock(owner, net.minecraft.world.InteractionHand.MAIN_HAND, pos, hit);
+            net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(ev);
+            return !ev.isCanceled() && ev.getUseBlock() != net.minecraftforge.eventbus.api.Event.Result.DENY;
+        } catch (Throwable t) {
+            return false; // fail closed
+        }
+    }
+
+    public static boolean canUseContainer(CompanionEntity c, ServerPlayer owner, BlockPos pos, BlockEntity be) {
+        return be instanceof Container && canInteractWithBlock(c, owner, pos);
+    }
+
+    public static boolean canInteractWithEntity(CompanionEntity c, ServerPlayer owner, Entity target) {
+        return owner != null && target != null && c.level() == owner.level() && target.level() == owner.level()
+                && c.distanceToSqr(target) <= RANGE_SQR && owner.distanceToSqr(target) <= RANGE_SQR;
+    }
+
+    /** Fires Forge's placement event so protection/claim mods can cancel a direct AI placement. */
+    public static boolean canPlaceBlock(CompanionEntity c, ServerPlayer owner, BlockPos pos) {
+        if (!canInteractWithBlock(c, owner, pos)) return false;
+        BlockSnapshot snapshot = BlockSnapshot.create(c.level().dimension(), c.level(), pos);
+        return !ForgeEventFactory.onBlockPlace(owner, snapshot, Direction.UP);
+    }
+}
